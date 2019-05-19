@@ -1,0 +1,8 @@
+Ducumentação da placa:
+https://github.com/beagleboard/beaglebone-blue
+
+Documentção da biblioteca
+http://www.strawsondesign.com/docs/librobotcontrol/index.html
+
+Integração com o Simulink
+https://www.mathworks.com/hardware-support/beaglebone-blue.html

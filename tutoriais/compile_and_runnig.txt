@@ -1,0 +1,4 @@
+$> cd /var/lib/cloud9/calango_voador/bin
+$> cmake .. (sómente necessario se tiver alteração no CMakeLists.txt)
+$> make
+$> ./main.out

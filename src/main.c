@@ -56,7 +56,7 @@ int main()
 		fprintf(fp,"%lu, %lf, %lf\n", tempo, pack_voltage, jack_voltage);
  		printf("\rPack: %0.2lfV   Cell: %0.2lfV   DC Jack: %0.2lfV  ", \
  					pack_voltage, cell_voltage, jack_voltage);
-		fflush(stdout);
+		//fflush(stdout);
 
 		//check periodically
 		rc_usleep(100000);

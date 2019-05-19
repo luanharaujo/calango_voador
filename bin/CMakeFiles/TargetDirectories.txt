@@ -1,0 +1,3 @@
+/var/lib/cloud9/calango_voador/bin/CMakeFiles/rebuild_cache.dir
+/var/lib/cloud9/calango_voador/bin/CMakeFiles/edit_cache.dir
+/var/lib/cloud9/calango_voador/bin/CMakeFiles/main.out.dir

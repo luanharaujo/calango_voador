@@ -1,0 +1,1 @@
+/usr/bin/cc     CMakeFiles/main.out.dir/src/main.o  -o main.out -rdynamic ../libs/librobotcontrol/lib/librobotcontrol.so.1.0.4 

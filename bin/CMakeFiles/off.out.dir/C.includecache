@@ -10,12 +10,6 @@
 
 .././libs/librobotcontrol/include/rc/led.h
 
-.././libs/librobotcontrol/include/rc/mpu.h
-stdint.h
--
-pthread.h
--
-
 .././libs/librobotcontrol/include/rc/start_stop.h
 
 .././libs/librobotcontrol/include/rc/time.h
@@ -26,7 +20,7 @@ time.h
 sys/time.h
 -
 
-/var/lib/cloud9/calango_voador/src/main.c
+/var/lib/cloud9/calango_voador/src/off.c
 stdio.h
 -
 rc/button.h
@@ -36,11 +30,5 @@ rc/led.h
 rc/start_stop.h
 -
 rc/time.h
--
-rc/mpu.h
--
-getopt.h
--
-signal.h
 -
 

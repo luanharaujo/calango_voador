@@ -114,7 +114,7 @@ int main()
 	while(rc_get_state()!=EXITING){
 		if(DEBUG) printf("%lu ", rc_nanos_thread_time());
 		rc_mpu_read_gyro(&data);
-		omega = -data.gyro[2];
+		omega = data.gyro[2];
 		
 		old_err = err;
 		err = ref - omega;
@@ -130,16 +130,16 @@ int main()
 		pot = err*KP + derr*KD + ierr*KI;
 		if(DEBUG) printf("%lu ", rc_nanos_thread_time());
 		if(pot>0){
-			dir = 1;
+			dir = 0;
 			duty_cicle = pot;
 		}
 		else {
-			dir = 0;
+			dir = 1;
 			duty_cicle = -pot;
 		}
 		if(DEBUG) printf("%lu ", rc_nanos_thread_time());
-		if(pot > 100) {
-			pot = 100;
+		if(duty_cicle > 100) {
+			duty_cicle = 100;
 		}
 		if(DEBUG) printf("%lu ", rc_nanos_thread_time());
 		if(dir) {

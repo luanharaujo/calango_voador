@@ -1,1 +1,0 @@
-/usr/bin/cc     CMakeFiles/off.out.dir/src/off.o  -o off.out -rdynamic ../libs/librobotcontrol/lib/librobotcontrol.so.1.0.4 

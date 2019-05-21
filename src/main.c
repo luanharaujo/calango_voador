@@ -4,6 +4,8 @@
 * Reference solution for balancing EduMiP
 * Adaptação para estabilização rotacional no eixo Z utiliando a roda de reção do TG da Maria Cristina
 **/
+#define DEBUG 0
+
 #include <stdio.h>
 #include <unistd.h> // for isatty()
 #include <stdlib.h> // for strtof()
@@ -39,14 +41,90 @@
 #include <rc/uart.h>
 #include <rc/version.h>
 
+#ifndef RC_BALANCE_CONFIG
+#define RC_BALANCE_CONFIG
+
+#define SAMPLE_RATE_HZ		100	// main filter and control loop speed
+
+// Structural properties of eduMiP
+#define BOARD_MOUNT_ANGLE	0.49 // increase if mip tends to roll forward
+#define GEARBOX			35.577
+#define ENCODER_RES		60
+#define WHEEL_RADIUS_M		0.034
+#define TRACK_WIDTH_M		0.035
+#define V_NOMINAL		7.4
+
+// inner loop controller 100hz
+#define D1_GAIN			1.05
+#define D1_ORDER		2
+#define D1_NUM			{-4.945, 8.862, -3.967}
+#define D1_DEN			{ 1.000, -1.481, 0.4812}
+#define D1_NUM_LEN		3
+#define D1_DEN_LEN		3
+#define D1_SATURATION_TIMEOUT	0.4
+
+
+// outer loop controller 100hz
+#define D2_GAIN			0.9
+#define	D2_ORDER		2
+#define D2_NUM			{0.18856,  -0.37209,  0.18354}
+#define D2_DEN			{1.00000,  -1.86046,   0.86046}
+#define D2_NUM_LEN		3
+#define D2_DEN_LEN		3
+#define THETA_REF_MAX		0.33
+
+// steering controller
+#define D3_KP			1.0
+#define D3_KI			0.3
+#define D3_KD			0.05
+#define STEERING_INPUT_MAX	0.5
+
+// electrical hookups
+#define MOTOR_CHANNEL_L		3
+#define MOTOR_CHANNEL_R		2
+#define MOTOR_POLARITY_L	1
+#define MOTOR_POLARITY_R	-1
+#define ENCODER_CHANNEL_L	3
+#define ENCODER_CHANNEL_R	2
+#define ENCODER_POLARITY_L	1
+#define ENCODER_POLARITY_R	-1
+
+//	drive speeds when using remote control (dsm2)
+#define DRIVE_RATE_NOVICE	16
+#define TURN_RATE_NOVICE	6
+#define DRIVE_RATE_ADVANCED	26
+#define TURN_RATE_ADVANCED	10
+
+// DSM channel config
+#define DSM_DRIVE_POL		1
+#define DSM_TURN_POL		1
+#define DSM_DRIVE_CH		3
+#define DSM_TURN_CH		2
+#define DSM_DEAD_ZONE		0.04
+
+// Thread Loop Rates
+#define BATTERY_CHECK_HZ	5
+#define SETPOINT_MANAGER_HZ	100
+#define PRINTF_HZ		50
+
+// other
+#define TIP_ANGLE		0.85
+#define START_ANGLE		0.3
+#define START_DELAY		0.4
+#define PICKUP_DETECTION_TIME	0.6
+#define ENABLE_POSITION_HOLD	1
+#define SOFT_START_SEC		0.7
+
+#endif	// endif RC_BALANCE_CONFIG
+
 #define PERILDO 333     // 3000Hz
 #define DT 0.000333333333
 
-#define KP 200
-#define KI 0
-#define KD 0
+#define KP 50
+#define KI 10
+#define KD 0.1
 
-rc_mpu_data_t data;
+//rc_mpu_data_t data;
 
 int dir;
 int duty_cicle = 0;
@@ -120,7 +198,7 @@ static int __arm_controller(void);
 static int __wait_for_starting_condition(void);
 static void __on_pause_press(void);
 static void __on_mode_release(void);
-static void __by_hand_pwm(void);
+static void* __by_hand_pwm(void* ptr);
 // global variables
 core_state_t cstate;
 setpoint_t setpoint;
@@ -219,10 +297,10 @@ int main(int argc, char *argv[])
         //                 return -1;
         //         }
         // }
-        // initialize adc
-        // if(rc_adc_init()==-1){
-        //         fprintf(stderr, "failed to initialize adc\n");
-        // }
+        //initialize adc
+        if(rc_adc_init()==-1){
+                fprintf(stderr, "failed to initialize adc\n");
+        }
         // make PID file to indicate your project is running
         // due to the check made on the call to rc_kill_existing_process() above
         // we can be fairly confident there is no PID file already and we can
@@ -309,6 +387,12 @@ int main(int argc, char *argv[])
         //         fprintf(stderr, "failed to start battery thread\n");
         //         return -1;
         // }
+        
+       
+        if(rc_pthread_create(&setpoint_thread, __by_hand_pwm, (void*) NULL, SCHED_OTHER, 0)){
+                fprintf(stderr, "failed to start battery thread\n");
+                return -1;
+        }
 
         // this should be the last step in initialization
         // to make sure other setup functions don't interfere
@@ -465,11 +549,14 @@ void* __setpoint_manager(__attribute__ ((unused)) void* ptr)
  */
 static void __balance_controller(void)
 {
-        rc_mpu_read_gyro(&data);
-        omega = data.gyro[2];
+        rc_mpu_read_gyro(&mpu_data);
+        //omega = data.gyro[2];
+        omega = mpu_data.gyro[2];
 
         old_err = err;
         err = ref - omega;
+        
+        if(DEBUG) printf("%f\n",omega);
         
        
         if( ( (err>0)&&(pot<100) ) || ( (err<0)&&(pot>-100) ) )
@@ -619,7 +706,7 @@ static void* __by_hand_pwm(__attribute__ ((unused)) void* ptr)
                 rc_led_set(RC_LED_RED,0);
                 rc_usleep((PERILDO*(100-duty_cicle))/100); 
                
-                rc_usleep(PERILDO);
+               //if (DEBUG) printf("\tpwm\n");
         }
         return NULL;
 }

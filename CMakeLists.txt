@@ -7,5 +7,5 @@ set(LIBCONTROLLIB ${CMAKE_CURRENT_SOURCE_DIR}/libs/librobotcontrol/lib/librobotc
 
 add_executable(main.out 
                 src/main.c)
-target_link_libraries(main.out ${LIBCONTROLLIB})
+target_link_libraries(main.out ${LIBCONTROLLIB} m)
                 

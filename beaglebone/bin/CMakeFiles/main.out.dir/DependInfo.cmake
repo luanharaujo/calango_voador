@@ -4,7 +4,7 @@ set(CMAKE_DEPENDS_LANGUAGES
   )
 # The set of files for implicit dependencies of each language:
 set(CMAKE_DEPENDS_CHECK_C
-  "/var/lib/cloud9/calango_voador/src/main.c" "/var/lib/cloud9/calango_voador/bin/CMakeFiles/main.out.dir/src/main.o"
+  "/var/lib/cloud9/calango_voador/beaglebone/src/main.c" "/var/lib/cloud9/calango_voador/beaglebone/bin/CMakeFiles/main.out.dir/src/main.o"
   )
 set(CMAKE_C_COMPILER_ID "GNU")
 

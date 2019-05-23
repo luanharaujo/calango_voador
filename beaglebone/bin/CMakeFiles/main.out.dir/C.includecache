@@ -922,7 +922,7 @@ rc/uart.h
 rc/version.h
 -
 
-/var/lib/cloud9/calango_voador/src/main.c
+/var/lib/cloud9/calango_voador/beaglebone/src/main.c
 stdio.h
 -
 unistd.h

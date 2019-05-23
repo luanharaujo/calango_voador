@@ -6,5 +6,5 @@ C_FLAGS =
 
 C_DEFINES = 
 
-C_INCLUDES = -I/var/lib/cloud9/calango_voador/./libs/librobotcontrol/include 
+C_INCLUDES = -I/var/lib/cloud9/calango_voador/beaglebone/./libs/librobotcontrol/include 
 

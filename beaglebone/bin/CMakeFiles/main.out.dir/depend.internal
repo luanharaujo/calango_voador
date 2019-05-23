@@ -211,4 +211,4 @@ CMakeFiles/main.out.dir/src/main.o
  .././libs/librobotcontrol/include/rc/uart.h
  .././libs/librobotcontrol/include/rc/version.h
  .././libs/librobotcontrol/include/robotcontrol.h
- /var/lib/cloud9/calango_voador/src/main.c
+ /var/lib/cloud9/calango_voador/beaglebone/src/main.c

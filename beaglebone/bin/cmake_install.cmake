@@ -1,4 +1,4 @@
-# Install script for directory: /var/lib/cloud9/calango_voador
+# Install script for directory: /var/lib/cloud9/calango_voador/beaglebone
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)
@@ -40,5 +40,5 @@ endif()
 
 string(REPLACE ";" "\n" CMAKE_INSTALL_MANIFEST_CONTENT
        "${CMAKE_INSTALL_MANIFEST_FILES}")
-file(WRITE "/var/lib/cloud9/calango_voador/bin/${CMAKE_INSTALL_MANIFEST}"
+file(WRITE "/var/lib/cloud9/calango_voador/beaglebone/bin/${CMAKE_INSTALL_MANIFEST}"
      "${CMAKE_INSTALL_MANIFEST_CONTENT}")

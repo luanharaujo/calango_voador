@@ -11,6 +11,8 @@
 #include <stdlib.h> // for strtof()
 #include <math.h> // for M_PI
 #include <robotcontrol.h>
+#include <time.h>
+
 
 #include <rc/adc.h>
 #include <rc/bmp.h>
@@ -40,6 +42,20 @@
 #include <rc/time.h>
 #include <rc/uart.h>
 #include <rc/version.h>
+#include<rc/i2c.h>
+#include<stdio.h>
+#include <rc/time.h>
+#include <unistd.h>
+#include <linux/i2c.h>
+
+
+#define BH1750_BUS 	1
+#define BH1750_HADD	0x5C
+#define BH1750_LADD     0x23	
+#define HRES_CONT	0x10 	//Constinuosly H-Resolution Mode
+#define HRES2_CONT	0x11	//Constinuosly H-Resolution Mode2	
+#define LRES_CONT	0x13	//Constinuosly L-Resolution Mode
+
 
 #ifndef RC_BALANCE_CONFIG
 #define RC_BALANCE_CONFIG
@@ -123,6 +139,7 @@
 #define KP 50
 #define KI 10
 #define KD 0.1
+#define LIMIT 5
 
 //rc_mpu_data_t data;
 
@@ -192,6 +209,7 @@ static void __balance_controller(void);         ///< mpu interrupt routine
 static void* __setpoint_manager(void* ptr);     ///< background thread
 static void* __battery_checker(void* ptr);      ///< background thread
 static void* __printf_loop(void* ptr);          ///< background thread
+static void* __light_loop(void* ptr);    
 static int __zero_out_controller(void);
 static int __disarm_controller(void);
 static int __arm_controller(void);
@@ -222,12 +240,39 @@ static void __print_usage(void)
  *
  * @return     0 on success, -1 on failure
  */
+ void init_sensor(){
+   if(rc_i2c_get_lock(BH1750_BUS)){
+        	printf("WARNING: i2c bus claimed by another thread\n");
+        	printf("Continuing anyway.\n");
+        }
+        
+        // initialize the bus
+        if(rc_i2c_init(BH1750_BUS, BH1750_HADD)<0){
+        	printf("ERROR: failed to initializmain.ce i2c bus\n");
+        	
+        }
+       if(rc_i2c_init(BH1750_BUS, BH1750_LADD)<0){
+        	printf("ERROR: failed to initialize i2c bus\n");
+        	
+        }  
+        rc_i2c_lock_bus(BH1750_BUS);
+ }
+ 
+ 
+ uint16_t read_ligth_sensor(int bus, uint8_t address){
+         uint16_t data; 
+         rc_i2c_set_device_address(bus, address);
+         rc_i2c_read_word(bus, address, &data);
+         return data;
+ }
+ 
 int main(int argc, char *argv[])
 {
         int c;
         pthread_t setpoint_thread = 0;
         pthread_t battery_thread = 0;
         pthread_t printf_thread = 0;
+        pthread_t light_thread = 0;
         // parse arguments
         opterr = 0;
         // while ((c = getopt(argc, argv, "i:")) != -1){
@@ -252,7 +297,7 @@ int main(int argc, char *argv[])
         //                 __print_usage();
         //                 return -1;
         //                 break;
-        //         }
+        //         }main.c
         // }
         // make sure another instance isn't running
         // if return value is -3 then a background process is running with
@@ -363,12 +408,15 @@ int main(int argc, char *argv[])
         // rc_filter_enable_saturation(&D3, -STEERING_INPUT_MAX, STEERING_INPUT_MAX);
         // // start a thread to slowly sample battery
         if(rc_pthread_create(&battery_thread, __battery_checker, (void*) NULL, SCHED_OTHER, 0)){
-                fprintf(stderr, "failed to start battery thread\n");
+                fprintf(stderr, "failemain.cd to start battery thread\n");
                 return -1;
         }
         // wait for the battery thread to make the first read
+        
+        
+        
         while(cstate.vBatt<1.0 && rc_get_state()!=EXITING) rc_usleep(10000);
-        // start printf_thread if running from a terminal
+        // start printfmain.c_thread if running from a terminal
         // if it was started as a background process then don't bother
         if(isatty(fileno(stdout))){
                 if(rc_pthread_create(&printf_thread, __printf_loop, (void*) NULL, SCHED_OTHER, 0)){
@@ -376,6 +424,10 @@ int main(int argc, char *argv[])
                         return -1;
                 }
         }
+        
+        
+        //start light control
+        rc_pthread_create(&light_thread, __light_loop, (void*) NULL, SCHED_OTHER, 0);
         // start mpu
         if(rc_mpu_initialize_dmp(&mpu_data, mpu_config)){
                 fprintf(stderr,"ERROR: can't talk to IMU, all hope is lost\n");
@@ -388,7 +440,7 @@ int main(int argc, char *argv[])
         //         return -1;
         // }
         
-       
+
         if(rc_pthread_create(&setpoint_thread, __by_hand_pwm, (void*) NULL, SCHED_OTHER, 0)){
                 fprintf(stderr, "failed to start battery thread\n");
                 return -1;
@@ -421,6 +473,9 @@ int main(int argc, char *argv[])
         rc_encoder_eqep_cleanup();
         rc_button_cleanup();    // stop button handlers
         rc_remove_pid_file();   // remove pid file LAST
+        
+        
+        rc_i2c_unlock_bus(BH1750_BUS);
         return 0;
 }
 /**
@@ -555,7 +610,8 @@ static void __balance_controller(void)
 
         old_err = err;
         err = ref - omega;
-        
+        if(fabs(err)<LIMIT)
+                err = 0.0;
         if(DEBUG) printf("%f\n",omega);
         
        
@@ -757,6 +813,29 @@ static void* __printf_loop(__attribute__ ((unused)) void* ptr)
                 //         fflush(stdout);
                 // }
                 rc_usleep(1000000 / PRINTF_HZ);
+        }
+        return NULL;
+}
+
+#define KP_LIGHT        2
+
+static void* __light_loop(__attribute__ ((unused)) void* ptr)
+{
+        init_sensor();
+        int err_light = 0;
+        rc_state_t last_rc_state, new_rc_state; // keep track of last state
+        last_rc_state = rc_get_state();
+        uint16_t hi_data, lo_data;
+        while(rc_get_state()!=EXITING){
+                new_rc_state = rc_get_state();
+                hi_data = read_ligth_sensor(1, BH1750_HADD);
+                lo_data = read_ligth_sensor(1, BH1750_LADD);
+                printf("Luminosity high %.2f, low %.2f\n", hi_data, lo_data);
+                err_light = ((lo_data/hi_data) >= 0.8 && (lo_data/hi_data) <= 1.2) ?
+                            0.0 : ((lo_data*1.4)-(hi_data/1.2));
+                ref = err_light*KP_LIGHT;
+                
+                rc_usleep(16000);
         }
         return NULL;
 }

@@ -142,6 +142,7 @@
 #define KD 0.1
 #define LIMIT 5
 
+
 //rc_mpu_data_t data;
 
 int dir;
@@ -153,10 +154,13 @@ float derr=0;
 float old_err=0;
 float ierr=0;
 float ref = 0;
+float refw = 0;
 float omega = 0;
 float theta = 0;
-clock_t start, end;
-
+clock_t begin, start, end;
+uint16_t light_read[360] = {0};
+uint16_t hi_data, lo_data;
+FILE* f; 
 /**
  * NOVICE: Drive rate and turn rate are limited to make driving easier.
  * ADVANCED: Faster drive and turn rate for more fun.
@@ -273,7 +277,11 @@ static void __print_usage(void)
 int main(int argc, char *argv[])
 {
         int c;
+        time(&begin); 
         time(&start); 
+        f = fopen("../log1.csv", "w");
+        fprintf(f,"tempo, ref, theta\n");
+        fprintf(f,"0, 1, 2\n");
         //uint32_t initial_time =   timer;
         pthread_t setpoint_thread = 0;
         pthread_t battery_thread = 0;
@@ -417,7 +425,7 @@ int main(int argc, char *argv[])
                 fprintf(stderr, "failemain.cd to start battery thread\n");
                 return -1;
         }
-        // wait for the battery thread to make the first read
+        // wait for the battery thread to make the first readmeasure time in c in minuts
         
         
         
@@ -482,6 +490,8 @@ int main(int argc, char *argv[])
         
         
         rc_i2c_unlock_bus(BH1750_BUS);
+        
+        fclose(f);
         return 0;
 }
 /**
@@ -608,10 +618,28 @@ void* __setpoint_manager(__attribute__ ((unused)) void* ptr)
  * discrete-time balance controller operated off mpu interrupt Called at
  * SAMPLE_RATE_HZ
  */
+ 
+ static uint16_t __array_argmax(){
+        uint16_t max_indx=0;
+        uint16_t max=0;
+        for(uint16_t i=0; i<360; i++){
+                if(max<light_read[i]){
+                        max = light_read[i];
+                        max_indx = i;
+                }
+        }
+        return max_indx;
+}
+ 
+ 
+ static float __angdiff(float diff){
+        return (float)((int)(diff + 180) % 360 - 180);
+ }
+ 
+ 
 static void __balance_controller(void)
 {
-
-        
+        static float errw, old_errw,ierrw,derrw;
         /*
         FILE* f = fopen("../log.csv", "a");
         
@@ -623,24 +651,16 @@ static void __balance_controller(void)
                 msec = ((long long int) timer_msec.time * 1000ll +
                         (long long int) timer_msec.millitm);
         }
-        else 
-        {
+        else Untitled2
+        {Untitled2
                 msec = -1;
         }
         
         //rc_mpu_read_gyro(&mpu_data);
         //omega = data.gyro[2];
         */
-        theta = mpu_data.dmp_TaitBryan[2]*RAD_TO_DEG;
-        printf("%f\n", theta);
-        omega = mpu_data.gyro[2];
-        //printf("entrou");
-        //fprintf(f, "%f, ", omega);
-        //fprintf(f, "%f, ", ref);
-        //fprintf(f, "%lld \n", msec);
-        
+        /*
         ref =0;
-        time(&end); 
         if (((int) (end - start))>5){
             ref = 90.0;
         }
@@ -648,8 +668,25 @@ static void __balance_controller(void)
             ref = 0.0;
             time(&start); 
         }
+        */
+        time(&end); 
+        theta = mpu_data.dmp_TaitBryan[2]*RAD_TO_DEG;
+        ref = (float)__array_argmax()-180;
+        fprintf(f,"%f, %f, %f\n", (double)(end-begin), ref, theta);
+        printf("theta: %f, argmax:%f\n", theta, ref);
+        omega = mpu_data.gyro[2];
+        //printf("entrou");
+        //fprintf(f, "%f, ", omega);
+        //fprintf(f, "%f, ", ref);
+        //fprintf(f, "%lld \n", msec);
+        
         old_err = err;
-        err = ref - theta;
+        old_errw = errw;
+        errw = refw - omega;
+        //err = __angdiff(ref - theta);
+        err = __angdiff(ref - theta);
+        //if (fabs(err)<45)
+        //        err = (lo_data - hi_data)/65536.0 * 90.0+ theta;
         if(fabs(err)<5)
                 err = 0.0;
         if(DEBUG) printf("%f\n",omega);
@@ -662,7 +699,15 @@ static void __balance_controller(void)
         
         derr = (err-old_err)/DT;
         
-        pot = err*KP/30 + derr*KD/5 + ierr*KI/50;
+        
+        if( ( (errw>0)&&(pot<100) ) || ( (errw<0)&&(pot>-100) ) )
+        {
+                ierrw += errw*DT;
+        }
+        
+        derrw = (errw-old_errw)/DT;
+        
+        pot =  err*KP/30 + derr*KD/5 + ierr*KI/50 ;
         if(pot>0){
                 dir = 0;
                 duty_cicle = pot;
@@ -677,7 +722,6 @@ static void __balance_controller(void)
         }
 
         
-        //fclose(f);
         return;
 }
 /**
@@ -869,6 +913,10 @@ static float __mult_abs_val (float a, float b)
         }
 }
 
+
+
+
+
 #define KP_LIGHT        10
 static void* __light_loop(__attribute__ ((unused)) void* ptr)
 {
@@ -877,7 +925,6 @@ static void* __light_loop(__attribute__ ((unused)) void* ptr)
         float dist = 0.0;
         rc_state_t last_rc_state, new_rc_state; // keep track of last state
         last_rc_state = rc_get_state();
-        uint16_t hi_data, lo_data;
         while(rc_get_state()!=EXITING){
                 new_rc_state = rc_get_state();
                 hi_data = read_ligth_sensor(1, BH1750_HADD);
@@ -886,9 +933,10 @@ static void* __light_loop(__attribute__ ((unused)) void* ptr)
                 dist = __mult_abs_val(hi_data/1.2, lo_data*1.4);
                 //printf("%.2f, ", dist);
         	err_light = dist <= 2 ? 0.0 : ((lo_data*1.4)-(hi_data/1.2));
-                ref = err_light*KP_LIGHT;
+                refw = err_light*KP_LIGHT;
                 //ref = (30.0 - theta);
                 //printf("%.2f\n", ref);
+                light_read[(int)theta+180] = (hi_data+lo_data) >>1;
                 rc_usleep(16000);
         }
         return NULL;

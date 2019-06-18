@@ -933,6 +933,10 @@ math.h
 -
 robotcontrol.h
 -
+time.h
+-
+sys/timeb.h
+-
 rc/adc.h
 -
 rc/bmp.h
@@ -988,5 +992,15 @@ rc/time.h
 rc/uart.h
 -
 rc/version.h
+-
+rc/i2c.h
+-
+stdio.h
+-
+rc/time.h
+-
+unistd.h
+-
+linux/i2c.h
 -
 

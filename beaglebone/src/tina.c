@@ -12,6 +12,7 @@
 #include <math.h> // for M_PI
 #include <robotcontrol.h>
 #include <time.h>
+#include <sys/timeb.h> //for time in miliseconds
 
 
 #include <rc/adc.h>
@@ -42,8 +43,8 @@
 #include <rc/time.h>
 #include <rc/uart.h>
 #include <rc/version.h>
-#include<rc/i2c.h>
-#include<stdio.h>
+#include <rc/i2c.h>
+#include <stdio.h>
 #include <rc/time.h>
 #include <unistd.h>
 #include <linux/i2c.h>
@@ -134,12 +135,13 @@
 #endif	// endif RC_BALANCE_CONFIG
 
 #define PERILDO 333     // 3000Hz
-#define DT 0.000333333333
+#define DT 0.01
 
 #define KP 50
 #define KI 10
 #define KD 0.1
 #define LIMIT 5
+
 
 //rc_mpu_data_t data;
 
@@ -152,9 +154,19 @@ float derr=0;
 float old_err=0;
 float ierr=0;
 float ref = 0;
+float refw = 0;
 float omega = 0;
+float theta = 0;
+clock_t begin, start, end;
+uint16_t light_read[360] = {0};
+uint16_t hi_data, lo_data;
+FILE* f; 
 
 
+struct timeb timer_msec_i;
+long long int  msec_i;
+        
+        
 /**
  * NOVICE: Drive rate and turn rate are limited to make driving easier.
  * ADVANCED: Faster drive and turn rate for more fun.
@@ -172,7 +184,7 @@ typedef enum arm_state_t{
 }arm_state_t;
 /**
  * Feedback controller setpoint written to by setpoint_manager and read by the
- * controller.
+ * controller.clock_t start, end;
  */
 typedef struct setpoint_t{
         arm_state_t arm_state;  ///< see arm_state_t declaration
@@ -217,6 +229,8 @@ static int __wait_for_starting_condition(void);
 static void __on_pause_press(void);
 static void __on_mode_release(void);
 static void* __by_hand_pwm(void* ptr);
+static float __mult_abs_val (float a, float b);
+
 // global variables
 core_state_t cstate;
 setpoint_t setpoint;
@@ -269,6 +283,22 @@ static void __print_usage(void)
 int main(int argc, char *argv[])
 {
         int c;
+        if(!ftime(&timer_msec_i)) 
+        {
+                msec_i = ((long long int) timer_msec_i.time * 1000ll +
+                        (long long int) timer_msec_i.millitm);
+        }
+        else
+        {
+                msec_i = -1;
+        }
+        
+        time(&begin); 
+        time(&start); 
+        f = fopen("../log32.csv", "w");
+        fprintf(f,"tempo, ref, theta, w, u\n");
+        fprintf(f,"0, 1, 2, 3, 4\n");
+        //uint32_t initial_time =   timer;
         pthread_t setpoint_thread = 0;
         pthread_t battery_thread = 0;
         pthread_t printf_thread = 0;
@@ -411,7 +441,7 @@ int main(int argc, char *argv[])
                 fprintf(stderr, "failemain.cd to start battery thread\n");
                 return -1;
         }
-        // wait for the battery thread to make the first read
+        // wait for the battery thread to make the first readmeasure time in c in minuts
         
         
         
@@ -476,6 +506,8 @@ int main(int argc, char *argv[])
         
         
         rc_i2c_unlock_bus(BH1750_BUS);
+        
+        fclose(f);
         return 0;
 }
 /**
@@ -602,28 +634,102 @@ void* __setpoint_manager(__attribute__ ((unused)) void* ptr)
  * discrete-time balance controller operated off mpu interrupt Called at
  * SAMPLE_RATE_HZ
  */
+ 
+ static uint16_t __array_argmax(){
+        uint16_t max_indx=0;
+        uint16_t max=0;
+        for(uint16_t i=0; i<360; i++){
+                if(max<light_read[i]){
+                        max = light_read[i];
+                        max_indx = i;
+                }
+        }
+        return max_indx;
+}
+ 
+ 
+ static float __angdiff(float diff){
+        return (float)((int)(diff + 180) % 360 - 180);
+ }
+ 
+ 
 static void __balance_controller(void)
 {
+        static float errw, old_errw,ierrw,derrw;
+        /*
+        FILE* f = fopen("../log.csv", "a");
+        */
+        //GETTING TIME IN MILISECONDS
+        struct timeb timer_msec;
+        long long int  msec;
+        if(!ftime(&timer_msec)) 
+        {
+                msec = ((long long int) timer_msec.time * 1000ll +
+                        (long long int) timer_msec.millitm);
+        }
+        else
+        {
+                msec = -1;
+        }
+        
+        
+        msec-=msec_i;
+        /*
+        if (((int) (end - start))>15){
+            ref = 90.0;
+        }
+        if (((int) (end - start))>30){
+            ref = 0.0;
+            time(&start); 
+        }
+        time(&end); 
+        */
+        ref =90;
+        theta = mpu_data.dmp_TaitBryan[2]*RAD_TO_DEG;
+        err = ref-theta;
+        //ref = (float)__array_argmax()-180;
         rc_mpu_read_gyro(&mpu_data);
-        //omega = data.gyro[2];
         omega = mpu_data.gyro[2];
-
+        //fprintf(f, "%f, ", omega);
+        //fprintf(f, "%f, ", ref);
+        //fprintf(f, "%lld \n", msec);
+        
         old_err = err;
-        err = ref - omega;
-        if(fabs(err)<LIMIT)
-                err = 0.0;
+        old_errw = errw;
+        errw = refw - omega;
+        //err = __angdiff(ref - theta);
+        //err = __angdiff(ref - theta);
+        //err = ref-theta;
+        //if (fabs(err)<45)
+        //        err = (lo_data - hi_data)/65536.0 * 90.0+ theta;
+        
+        if(fabs(err)<5)
+               // err = 0.0;
         if(DEBUG) printf("%f\n",omega);
         
        
         if( ( (err>0)&&(pot<100) ) || ( (err<0)&&(pot>-100) ) )
         {
-                ierr += err*DT;
+                ierr += (err +old_err) *DT/2;
         }
-        
+        /*
         derr = (err-old_err)/DT;
         
-        pot = err*KP + derr*KD + ierr*KI;
         
+        if( ( (errw>0)&&(pot<100) ) || ( (errw<0)&&(pot>-100) ) )
+        {
+                ierrw += errw*DT;
+        }
+        
+        derrw = (errw-old_errw)/DT;
+        
+        //pot =  err*KP/30 + derr*KD/5 + ierr*KI/50 ;
+        pot = 0.2*err;
+        */
+        //pot = -0.0683*theta -0.0797*omega + 0.0683*ref;
+        pot = -0.0867*theta -0.0757*omega + 0.0258*ierr; //+ 0.0309*ref;
+        fprintf(f,"%f, %f, %f, %f, %f\n", (double)(msec/1000.0), ref, theta, omega, pot);
+        printf("\rtheta: %9.4f, omega:%9.4f, u: %9.4f err: %9.4f ref: %9.4f", theta, omega, pot, err, ref);
         if(pot>0){
                 dir = 0;
                 duty_cicle = pot;
@@ -637,6 +743,7 @@ static void __balance_controller(void)
                 duty_cicle = 100;
         }
 
+        
         return;
 }
 /**
@@ -817,24 +924,41 @@ static void* __printf_loop(__attribute__ ((unused)) void* ptr)
         return NULL;
 }
 
-#define KP_LIGHT        2
+#define EULER           2.718282
+static float __mult_abs_val (float a, float b)
+{
+        if (a == 0.0) return b;
+        else if (b == 0.0) return a;
+        else 
+        {
+                return (pow(EULER, fabs(log(a/b)))); 
+        }
+}
 
+
+
+
+
+#define KP_LIGHT        10
 static void* __light_loop(__attribute__ ((unused)) void* ptr)
 {
         init_sensor();
-        int err_light = 0;
+        float err_light = 0.0;
+        float dist = 0.0;
         rc_state_t last_rc_state, new_rc_state; // keep track of last state
         last_rc_state = rc_get_state();
-        uint16_t hi_data, lo_data;
         while(rc_get_state()!=EXITING){
                 new_rc_state = rc_get_state();
-                hi_data = read_ligth_sensor(1, BH1750_HADD);
-                lo_data = read_ligth_sensor(1, BH1750_LADD);
-                printf("Luminosity high %.2f, low %.2f\n", hi_data, lo_data);
-                err_light = ((lo_data/hi_data) >= 0.8 && (lo_data/hi_data) <= 1.2) ?
-                            0.0 : ((lo_data*1.4)-(hi_data/1.2));
-                ref = err_light*KP_LIGHT;
-                
+                //hi_data = read_ligth_sensor(1, BH1750_HADD);
+                //lo_data = read_ligth_sensor(1, BH1750_LADD);
+                //printf("%u, %u, ", hi_data, lo_data);
+                dist = __mult_abs_val(hi_data/1.2, lo_data*1.4);
+                //printf("%.2f, ", dist);
+        	err_light = dist <= 2 ? 0.0 : ((lo_data*1.4)-(hi_data/1.2));
+                refw = err_light*KP_LIGHT;
+                //ref = (30.0 - theta);
+                //printf("%.2f\n", ref);
+                light_read[(int)theta+180] = (hi_data+lo_data) >>1;
                 rc_usleep(16000);
         }
         return NULL;
